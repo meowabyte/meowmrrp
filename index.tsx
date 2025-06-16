@@ -4,16 +4,20 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { addMessagePreSendListener, removeMessagePreSendListener } from "@api/MessageEvents";
 import { definePluginSettings } from "@api/Settings";
 import { ErrorBoundary } from "@components/index";
 import { getCurrentChannel, sendMessage } from "@utils/discord";
 import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import { findComponentByCodeLazy } from "@webpack";
-import { Card, MessageStore, UserStore } from "@webpack/common";
+import { Card, FluxDispatcher, MessageStore, UserStore } from "@webpack/common";
 
-import type { ChatEmojiProps, EmojiNode } from "./types";
+import type { ChatEmojiProps, EmojiNode, Message } from "./types";
 
+let isCurrentlyActive = false;
+const unsetIsActive = () => { isCurrentlyActive = false; };
+const setIsActive = () => { isCurrentlyActive = true; };
 
 let interv: number | null = null;
 
@@ -52,10 +56,21 @@ const settings = definePluginSettings({
         type: OptionType.STRING,
         description: "Phrases to use. (separated by colon)",
         default: DEFAULT_RANDOM_PHRASES.join(", "),
+        placeholder: "eg. meow, mrow, meows"
+    },
+    serverBlacklist: {
+        type: OptionType.STRING,
+        description: "Server IDs that are blacklisted from this plugin. (separated by colon)",
+        default: "",
+        placeholder: "eg. 123, 456, 789"
+    },
+    activeOnly: {
+        type: OptionType.BOOLEAN,
+        description: "Should the plugin be only triggered when you sent something there in active session? (on channel switch)",
+        default: true,
+        restartNeeded: true
     }
 });
-
-type Message = { id: string, timestamp: Date, author: { id: string; }, content?: string; };
 
 export default definePlugin({
     name: "meowmrrp",
@@ -77,11 +92,18 @@ export default definePlugin({
         return phrases[Math.floor(Math.random() * phrases.length)];
     },
 
+    getBlacklist() {
+        return this.settings.store.serverBlacklist.split(",").map(s => s.trim());
+    },
+
     sendMeow() {
         const ch = getCurrentChannel();
         if (!ch) return;
 
-        const { id } = ch;
+        const { id, guild_id } = ch;
+        if (this.getBlacklist().includes(guild_id)) return;
+        if (this.settings.store.activeOnly && !isCurrentlyActive) return;
+
         const lastMsg: Message | undefined = MessageStore.getMessages(id).last();
 
         if (
@@ -106,12 +128,20 @@ export default definePlugin({
         if (this.delay < Math.min(...ALLOWED_DELAYS)) return; // Pls no silly, don't get muted qwq
 
         interv = setInterval(this.sendMeow.bind(this), this.delay * 60_000) as any;
+        if (this.settings.store.activeOnly) {
+            FluxDispatcher.subscribe("CHANNEL_SELECT", unsetIsActive);
+            addMessagePreSendListener(setIsActive);
+        }
     },
 
     stop() {
         if (interv) {
             clearInterval(interv);
             interv = null;
+        }
+        if (this.settings.store.activeOnly) {
+            FluxDispatcher.unsubscribe("CHANNEL_SELECT", unsetIsActive);
+            removeMessagePreSendListener(setIsActive);
         }
     },
 });

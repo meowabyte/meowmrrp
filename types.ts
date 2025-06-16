@@ -6,3 +6,4 @@
 
 export type EmojiNode = { animated: false, emojiId: string, jumboable: boolean, name: `:${string}:`, type: "customEmoji"; };
 export type ChatEmojiProps = { node: EmojiNode, isInteracting: boolean, tooltipPosition?: string, enableClick?: boolean, channelId: string, messageId: string; };
+export type Message = { id: string, timestamp: Date, author: { id: string; }, content?: string; };
