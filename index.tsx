@@ -4,16 +4,23 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import "./style.css";
+
 import { addMessagePreSendListener, removeMessagePreSendListener } from "@api/MessageEvents";
 import { definePluginSettings } from "@api/Settings";
 import { ErrorBoundary } from "@components/index";
 import { getCurrentChannel, sendMessage } from "@utils/discord";
+import { Margins } from "@utils/margins";
 import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
-import { findComponentByCodeLazy } from "@webpack";
-import { Card, FluxDispatcher, MessageStore, UserStore } from "@webpack/common";
+import { findByPropsLazy, findComponentByCodeLazy } from "@webpack";
+import { Card, FluxDispatcher, Forms, GuildStore, MessageStore, ScrollerThin, TextInput, Tooltip, useCallback, useMemo, UserStore, useState } from "@webpack/common";
 
-import type { ChatEmojiProps, EmojiNode, Message } from "./types";
+import type { ChatEmojiProps, EmojiNode, InputTagsClassesProps, InputWithTagsProps, Message } from "./types";
+
+const ChatEmoji = findComponentByCodeLazy<ChatEmojiProps>("emojiId:", "emojiName:", "animated:", "isInteracting:");
+const InputWithTags = findComponentByCodeLazy<InputWithTagsProps>("onRemoveTag", "onQueryChange", "useKeyboardNavigation");
+const InputTagsClasses = findByPropsLazy("richTag", "richTagInput", "tagLabel", "tagRoleColor") as InputTagsClassesProps;
 
 let isCurrentlyActive = false;
 const unsetIsActive = () => { isCurrentlyActive = false; };
@@ -24,7 +31,6 @@ let interv: number | null = null;
 const DEFAULT_RANDOM_PHRASES = ["meow", "mrrp", "mrrow", "mrow", "mrrrrp", "mewo"];
 const ALLOWED_DELAYS = [5, 10, 20, 30, 40, 50, 60];
 
-const ChatEmoji = findComponentByCodeLazy<ChatEmojiProps>("emojiId:", "emojiName:", "animated:", "isInteracting:");
 
 const blobcatcozyNode: EmojiNode = {
     emojiId: "1026533070955872337",
@@ -53,16 +59,89 @@ const settings = definePluginSettings({
         markers: ALLOWED_DELAYS
     },
     phrases: {
-        type: OptionType.STRING,
-        description: "Phrases to use. (separated by colon)",
-        default: DEFAULT_RANDOM_PHRASES.join(", "),
-        placeholder: "eg. meow, mrow, meows"
+        type: OptionType.COMPONENT,
+        default: DEFAULT_RANDOM_PHRASES,
+        component: () => {
+            const [query, setQuery] = useState("");
+
+            const onRemoveTag = useCallback((i: number) => {
+                settings.store.phrases.splice(i, 1);
+            }, [settings.store.phrases]);
+
+            const onQueryChange = useCallback((q: string) => {
+                q = q.trim();
+
+                if (q.endsWith(",")) {
+                    settings.store.phrases.push(q.slice(0, -1));
+                    setQuery("");
+                    return;
+                }
+
+                setQuery(q);
+            }, []);
+
+            return <Forms.FormSection>
+                <Forms.FormTitle >Phrases</Forms.FormTitle>
+                <Forms.FormText className={Margins.bottom20}>Phrases to use.</Forms.FormText>
+                <InputWithTags
+                    placeholder="eg. meow, mrrp, mrrow"
+                    size={InputTagsClasses.medium}
+                    tags={settings.store.phrases}
+                    query={query}
+                    onQueryChange={onQueryChange}
+                    onRemoveTag={onRemoveTag} />
+            </Forms.FormSection>;
+        }
     },
     serverBlacklist: {
-        type: OptionType.STRING,
+        type: OptionType.COMPONENT,
         description: "Server IDs that are blacklisted from this plugin. (separated by colon)",
-        default: "",
-        placeholder: "eg. 123, 456, 789"
+        default: [] as string[],
+        component: () => {
+            const [query, setQuery] = useState("");
+
+            const guilds = useMemo(
+                () => {
+                    const list = Object.values(GuildStore.getGuilds())
+                        .toSorted(g => settings.store.serverBlacklist.includes(g.id) ? -1 : 1);
+
+                    if (query.length === 0) return list;
+
+                    const idMode = /^\d+$/.test(query);
+                    return list.filter(g => idMode ? g.id.includes(query) : g.name.toLowerCase().includes(query.toLowerCase()));
+                },
+                [settings.store.serverBlacklist, query]
+            );
+
+            const toggleGuild = useCallback((id: string) => {
+                const pos = settings.store.serverBlacklist.findIndex(x => x === id);
+
+                if (pos > -1) settings.store.serverBlacklist.splice(pos, 1);
+                else settings.store.serverBlacklist.push(id);
+            }, [settings.store.serverBlacklist]);
+
+            return <Forms.FormSection>
+                <Forms.FormTitle >Server Blacklist</Forms.FormTitle>
+                <Forms.FormText className={Margins.bottom20}>Servers that this plugin will ignore.</Forms.FormText>
+                <TextInput onChange={setQuery} placeholder="Search for server/ID" />
+                <ScrollerThin className="mm-serverpicker">
+                    {guilds.map(g => {
+                        const selected = settings.store.serverBlacklist.includes(g.id);
+
+                        return (
+                            <Tooltip key={g.id} text={`${selected ? "❌ " : ""}${g.name}`}>
+                                {tooltipProps => (
+                                    <div className="mm-serverpicker-icon-wrapper">
+                                        <img {...tooltipProps} loading="lazy" onClick={() => toggleGuild(g.id)} className="mm-serverpicker-icon" src={g.getIconURL(60, true)} height={60} />
+                                        {selected && <div className="mm-serverpicker-icon-overlay" />}
+                                    </div>
+                                )}
+                            </Tooltip>
+                        );
+                    })}
+                </ScrollerThin>
+            </Forms.FormSection>;
+        }
     },
     activeOnly: {
         type: OptionType.BOOLEAN,
@@ -79,10 +158,8 @@ export default definePlugin({
     settings,
 
     getPhrases() {
-        const phrases = this.settings.store.phrases.split(",");
-
-        if (phrases.length === 0) return DEFAULT_RANDOM_PHRASES;
-        return phrases;
+        if (this.settings.store.phrases.length === 0) this.settings.store.phrases = DEFAULT_RANDOM_PHRASES;
+        return this.settings.store.phrases;
     },
 
     get delay(): number { return this.settings.store.delay; },
@@ -93,7 +170,7 @@ export default definePlugin({
     },
 
     getBlacklist() {
-        return this.settings.store.serverBlacklist.split(",").map(s => s.trim());
+        return this.settings.store.serverBlacklist;
     },
 
     sendMeow() {
@@ -125,6 +202,9 @@ export default definePlugin({
     },
 
     start() {
+        if (typeof (this.settings.store.phrases as string | string[]) === "string") (this.settings.store.phrases as unknown as string).split(",").map(p => p.trim());
+        if (typeof (this.settings.store.serverBlacklist as string | string[]) === "string") (this.settings.store.serverBlacklist as unknown as string).split(",").map(p => p.trim());
+
         if (this.delay < Math.min(...ALLOWED_DELAYS)) return; // Pls no silly, don't get muted qwq
 
         interv = setInterval(this.sendMeow.bind(this), this.delay * 60_000) as any;
