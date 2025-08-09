@@ -14,11 +14,28 @@ import { Margins } from "@utils/margins";
 import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import { findByPropsLazy, findComponentByCodeLazy } from "@webpack";
-import { Card, FluxDispatcher, Forms, GuildStore, MessageStore, ScrollerThin, TextInput, Tooltip, useCallback, useMemo, UserStore, useState } from "@webpack/common";
+import { Card, FluxDispatcher, Forms, GuildStore, IconUtils, MessageStore, ScrollerThin, TextInput, Tooltip, useCallback, useMemo, UserStore, useState } from "@webpack/common";
 
-import type { ChatEmojiProps, EmojiNode, InputTagsClassesProps, InputWithTagsProps, Message } from "./types";
+import type { ChatEmojiProps, InputTagsClassesProps, InputWithTagsProps, Message } from "./types";
 
-const ChatEmoji = findComponentByCodeLazy<ChatEmojiProps>("emojiId:", "emojiName:", "animated:", "isInteracting:");
+const ChatEmoji = findComponentByCodeLazy<ChatEmojiProps>("isInteracting:", "tooltipPosition:", "enableClick:", "channelId:", "messageId:");
+const BlobCatCozy = () =>
+    <ErrorBoundary noop>
+        <ChatEmoji
+            isInteracting={false}
+            channelId="1015060231060983891"
+            messageId="0"
+            enableClick={false}
+            tooltipPosition="top"
+            node={{
+                emojiId: "1026533070955872337",
+                name: ":blobcatcozy:",
+                animated: false,
+                type: "customEmoji",
+                jumboable: false
+            }}
+        />
+    </ErrorBoundary>;
 const InputWithTags = findComponentByCodeLazy<InputWithTagsProps>("onRemoveTag", "onQueryChange", "useKeyboardNavigation");
 const InputTagsClasses = findByPropsLazy("richTag", "richTagInput", "tagLabel", "tagRoleColor") as InputTagsClassesProps;
 
@@ -32,22 +49,13 @@ const DEFAULT_RANDOM_PHRASES = ["meow", "mrrp", "mrrow", "mrow", "mrrrrp", "mewo
 const ALLOWED_DELAYS = [5, 10, 20, 30, 40, 50, 60];
 
 
-const blobcatcozyNode: EmojiNode = {
-    emojiId: "1026533070955872337",
-    name: ":blobcatcozy:",
-    animated: false,
-    type: "customEmoji",
-    jumboable: false
-};
-
-
 const settings = definePluginSettings({
     notif1: {
         type: OptionType.COMPONENT,
         component: () => <Card className={classes("vc-settings-card", "vc-backup-restore-card")}>
             <span>
                 This plugin triggers <b>ONLY</b> when no messages were sent in past <code>delay * 2</code> and if last message was not from a plugin to prevent spam!
-                I don't care if you like it or not, I don't want to be hated for making spam plugin. <ErrorBoundary noop><ChatEmoji node={blobcatcozyNode} isInteracting={false} channelId={""} messageId={""} /></ErrorBoundary>
+                I don't care if you like it or not, I don't want to be hated for making spam plugin. <BlobCatCozy />
             </span>
         </Card>
     },
@@ -132,7 +140,7 @@ const settings = definePluginSettings({
                             <Tooltip key={g.id} text={`${selected ? "❌ " : ""}${g.name}`}>
                                 {tooltipProps => (
                                     <div className="mm-serverpicker-icon-wrapper">
-                                        <img {...tooltipProps} loading="lazy" onClick={() => toggleGuild(g.id)} className="mm-serverpicker-icon" src={g.getIconURL(60, true)} height={60} />
+                                        <img {...tooltipProps} loading="lazy" onClick={() => toggleGuild(g.id)} className="mm-serverpicker-icon" src={IconUtils.getGuildIconURL({ id: g.id, icon: g.icon, size: 60, canAnimate: true })} height={60} />
                                         {selected && <div className="mm-serverpicker-icon-overlay" />}
                                     </div>
                                 )}

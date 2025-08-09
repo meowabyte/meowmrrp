@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+// NOTE: This type is not accurate and should be analyzed further for other use than custom emojis
 export type EmojiNode = { animated: false, emojiId: string, jumboable: boolean, name: `:${string}:`, type: "customEmoji"; };
 export type Message = { id: string, timestamp: Date, author: { id: string; }, content?: string; };
 
